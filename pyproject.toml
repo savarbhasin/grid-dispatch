@@ -1,0 +1,24 @@
+[project]
+name = "grid-dispatch"
+version = "0.1.0"
+description = "Run a power grid for one real day as the dispatcher on duty; graded against a re-planning solver with the same information."
+readme = "README.md"
+authors = [
+    { name = "savarbhasin", email = "savarbhasin446@gmail.com" }
+]
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "aiohttp>=3.14.5",
+    "numpy>=2.5.4",
+    "openai>=2.54.0,<3",
+    "ortools>=9.15.6755",
+    "pandas>=3.0.6",
+    "verifiers",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.18,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+verifiers = { git = "https://github.com/PrimeIntellect-ai/verifiers", rev = "fd9c4afeb8879225a3448e8593fa908f05209e51" }
