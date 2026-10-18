@@ -19,7 +19,8 @@ from grid_dispatch.toolset import GridDispatchToolset, ShiftState, rebuild
 from grid_dispatch.world import H
 
 DATA = Path(__file__).with_name("data")
-DEFAULT_TASKS = DATA / "tasks-v0.jsonl"
+DEFAULT_TASKS = DATA / "v1" / "test.jsonl"   # held-out days; the reference's moves are removed
+TRAIN_TASKS = DATA / "v1" / "train.jsonl"
 
 PROMPT = """You are the dispatcher on duty at a power grid control room for one full day, 00:00 to 24:00.
 

@@ -1,8 +1,9 @@
 .venv/
 __pycache__/
 *.py[oc]
-# data, built tasks, run outputs and transcripts are not in the repo (see README)
+# raw data, build scratch, run outputs and transcripts are not in the repo; the v1 tasks are
 /data/
-/src/grid_dispatch/data/
+/src/grid_dispatch/data/*
+!/src/grid_dispatch/data/v1/
 /outputs/
 /experiments/results/

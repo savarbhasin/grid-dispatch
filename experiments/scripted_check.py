@@ -7,7 +7,8 @@ Policies:
   silent   answers in text and never calls a tool                         expect the 'nothing' baseline
            (the rest of the day runs on the midnight orders)
 
-usage: uv run python experiments/scripted_check.py [--tasks JSONL] [--policies oracle nothing silent]
+usage: uv run python experiments/scripted_check.py [--tasks JSONL (default v1 train)] [--limit N]
+           [--policies oracle nothing silent]
 """
 
 import argparse
@@ -19,14 +20,17 @@ from pathlib import Path
 
 from aiohttp import web
 
-from grid_dispatch.taskset import DEFAULT_TASKS
+from grid_dispatch.check import task_from_row
+from grid_dispatch.shift import Shift
+from grid_dispatch.taskset import TRAIN_TASKS
+from grid_dispatch.world import World
 from verifiers.v1.clients import EvalClientConfig, ModelContext
 from verifiers.v1.configs.cli.eval import EvalConfig
 from verifiers.v1.dialects.chat import ChatDialect
 from verifiers.v1.types import SamplingConfig
 from verifiers.v1.utils.loaders import harness_config_type, load_environment
 
-TASKS = DEFAULT_TASKS
+TASKS = TRAIN_TASKS   # oracle needs the reference's moves, which test rows don't carry
 ROWS: list[dict] = []
 
 
@@ -48,10 +52,12 @@ def schedule_orders(step: dict) -> list[dict]:
 
 
 def match_row(system_text: str) -> dict:
-    """Identify the task from get_system's last line (grid area and date) plus its unit list."""
+    """Identify the task from get_system's full text: the same real day can appear with
+    several fleets, so the grid area and date alone are not enough."""
     for row in ROWS:
-        w = row["world"]
-        if f"Grid area {w['ba']}, {w['date']}." in system_text and all(u["id"] in system_text for u in w["units"]):
+        if "_system" not in row:
+            row["_system"] = Shift(World(task_from_row(row))).get_system()
+        if row["_system"].strip() == system_text.strip():
             return row
     raise LookupError("no task matches this system description")
 
@@ -147,9 +153,12 @@ async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tasks", type=Path, default=TASKS)
     ap.add_argument("--policies", nargs="+", default=["oracle", "nothing", "silent"])
+    ap.add_argument("--limit", type=int, default=None, help="only the first N tasks")
     args = ap.parse_args()
     TASKS = args.tasks
     ROWS.extend(json.loads(line) for line in TASKS.read_text().splitlines())
+    if args.limit:
+        del ROWS[args.limit:]
     by_id = {r["id"]: r for r in ROWS}
     ok = True
     for policy in args.policies:
@@ -158,7 +167,7 @@ async def main():
         for tid, reward, metrics in sorted(results):
             ref = by_id[tid]["reference"]
             want = 1.0 if policy == "oracle" else ref["baselines"]["nothing"]["score"]
-            good = reward is not None and abs(reward - want) < 1e-4   # costs are stored to the cent
+            good = reward is not None and abs(reward - want) < 5e-4   # stored baseline scores have 4 decimals
             ok &= good
             stats = {k: round(v, 3) for k, v in metrics.get("shift_stats", metrics).items() if k in ("reliability", "economy", "shed_mwh", "steps_played")}
             print(f"  {'ok ' if good else 'BAD'} {tid}: reward {reward} (expected {want:.4f}) {stats}")
