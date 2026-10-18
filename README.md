@@ -63,7 +63,7 @@ the metrics also report `reliability`, `economy`, unserved MWh, orders, `simulat
 
 One attempt per day, models served by Fireworks, **no thinking cap**. Scores use the score above.
 
-**The 5 hardest test days.** Each has two plants breaking, simple strategies score 0.00–0.13, and the solver keeps the
+**The 5 hardest days** (all in the train split; test-split results to come). Each has two plants breaking, simple strategies score 0.00–0.13, and the solver keeps the
 lights fully on.
 
 | Day | DeepSeek V4.1 Flash | Nemotron Lightning 3.5 |
