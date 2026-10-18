@@ -27,7 +27,7 @@ def task_from_row(row: dict) -> Task:
 def replay(row: dict) -> float:
     task = task_from_row(row)
     world = World(task)
-    for step in row["reference"]["rolling_actions"]:
+    for step in row["reference"]["actions"]:
         assert world.now == step["at"]
         for a in step["actions"]:
             if "battery" in a:

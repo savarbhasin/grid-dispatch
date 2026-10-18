@@ -15,12 +15,18 @@ from ortools.linear_solver import pywraplp
 from grid_dispatch.world import DUMP, H, RESERVE, VOLL, World
 
 RESERVE_PENALTY = 500.0   # $/MW-h of reserve shortfall, in the solver's objective only
-# Spinning reserve the solver keeps each hour: RESERVE x forecast demand, and at least the output
-# of the largest running unit (so one trip can be covered: the "N-1" rule operators use).
+# Spinning reserve the solver keeps each hour: RESERVE x forecast demand, and enough to cover the
+# output of the largest running unit (reserve_n=1, the "N-1" rule operators use) or twice it
+# (reserve_n=2, a cautious stand-in for "any two units": one constraint per unit instead of one per
+# pair, which the solver handles in seconds). reserve_n=0 keeps none (the hindsight plan needs none).
+
+
+class PlanError(RuntimeError):
+    pass
 
 
 def plan(world: World, demand: np.ndarray, renew: np.ndarray, end: int = H, trips: dict[str, int] | None = None,
-         ignore_lead: bool = False, time_limit: float = 30.0, reserve: bool = True) -> tuple[dict[str, np.ndarray], np.ndarray, dict]:
+         ignore_lead: bool = False, time_limit: float = 30.0, reserve_n: int = 1) -> tuple[dict[str, np.ndarray], np.ndarray, dict]:
     """Cheapest commitment for hours [now, end) given forecasts. Returns full-day schedules
     (hours before now copied, hours after `end` holding the last state), a battery plan and
     solver stats."""
@@ -36,7 +42,7 @@ def plan(world: World, demand: np.ndarray, renew: np.ndarray, end: int = H, trip
     obj = s.Objective()
     U, P, R = {}, {}, {}
     total_p = {h: [] for h in hrs}
-    reserve = {h: [] for h in hrs}
+    spare = {h: [] for h in hrs}
     for u in t.units:
         state, n, p_prev = world.status_before(u.id)
         old = world.sched[u.id]
@@ -84,7 +90,7 @@ def plan(world: World, demand: np.ndarray, renew: np.ndarray, end: int = H, trip
             r = s.NumVar(0, u.pmax, "")
             s.Add(r <= u.pmax * uu[h] - pp[h])
             s.Add(r <= u.ramp * uu[h])
-            reserve[h].append(r)
+            spare[h].append(r)
             R.setdefault(u.id, {})[h] = r
     soc_prev = world.soc
     bat = {}
@@ -99,14 +105,15 @@ def plan(world: World, demand: np.ndarray, renew: np.ndarray, end: int = H, trip
         obj.SetCoefficient(dump, DUMP)
         obj.SetCoefficient(rshort, RESERVE_PENALTY)
         s.Add(sum(total_p[h]) + ren + d - c + shed - dump == float(demand[h]))
-        if reserve:
-            s.Add(sum(reserve[h]) + rshort >= RESERVE * float(demand[h]))
-            for u in t.units:   # N-1: the others can cover this unit's output if it trips
-                s.Add(sum(reserve[h]) - R[u.id][h] + rshort >= P[u.id][h])
+        if reserve_n >= 1:
+            s.Add(sum(spare[h]) + rshort >= RESERVE * float(demand[h]))
+            for u in t.units:   # the others can cover this unit's output (twice it, for N-2) if it trips
+                s.Add(sum(spare[h]) - R[u.id][h] + rshort >= reserve_n * P[u.id][h])
         bat[h] = (c, d)
     obj.SetMinimization()
     status = s.Solve()
-    assert status in (pywraplp.Solver.OPTIMAL, pywraplp.Solver.FEASIBLE), status
+    if status not in (pywraplp.Solver.OPTIMAL, pywraplp.Solver.FEASIBLE):
+        raise PlanError(f"solver status {status} after {time.perf_counter() - t0:.0f}s")
     sched = {}
     for u in t.units:
         x = world.sched[u.id].copy()
@@ -147,14 +154,20 @@ def run(world: World, policy: str) -> dict:
     steps, solves = [], []
     while world.now < H:
         acts = []
-        if policy == "rolling" or (policy == "static" and world.now == 0) or policy == "myopic":
+        if policy in ("rolling", "rolling2", "myopic") or (policy == "static" and world.now == 0):
             dem, ren = t.forecast(world.now)
             end = H if policy != "myopic" else min(H, world.now + t.step)
-            sched, bat, st = plan(world, dem, ren, end=end)
+            try:
+                sched, bat, st = plan(world, dem, ren, end=end, reserve_n=2 if policy == "rolling2" else 1)
+            except PlanError:   # out of time with the cautious reserve: this step plans with N-1
+                if policy != "rolling2":
+                    raise
+                sched, bat, st = plan(world, dem, ren, end=end, reserve_n=1)
+                st["fallback"] = True
             solves.append(st)
             acts = apply(world, sched, bat)
         elif policy == "hindsight" and world.now == 0:
-            sched, bat, st = plan(world, t.demand, t.renew, trips=t.trips, reserve=False)
+            sched, bat, st = plan(world, t.demand, t.renew, trips=t.trips, reserve_n=0)
             solves.append(st)
             acts = apply(world, sched, bat)
         steps.append({"at": world.now, "actions": acts})

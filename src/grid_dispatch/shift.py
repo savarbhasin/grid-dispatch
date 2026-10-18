@@ -11,7 +11,7 @@ import dataclasses
 
 import numpy as np
 
-from grid_dispatch.build import grade
+from grid_dispatch.grading import score
 from grid_dispatch.world import DUMP, H, RESERVE, VOLL, World
 
 SIMULATE_PER_STEP = 3
@@ -33,8 +33,8 @@ def _hours(x: np.ndarray, start: int) -> str:
 
 
 class Shift:
-    def __init__(self, world: World, reference: float, floor: float):
-        self.w, self.reference, self.floor = world, reference, floor
+    def __init__(self, world: World, reference: dict | None = None):
+        self.w, self.reference = world, reference   # reference: the task row's "reference" (for result())
         self.sim_left = SIMULATE_PER_STEP
 
     # ------------------------------------------------------------------ look
@@ -170,5 +170,8 @@ class Shift:
     # ------------------------------------------------------------------ result
     def result(self) -> dict:
         cost = self.w.total()
-        return {"cost": cost, "score": grade(cost, self.reference, self.floor), "reference": self.reference,
-                "floor": self.floor, "shed_mwh": self.w.shed_mwh, "starts": self.w.starts, "parts": dict(self.w.cost)}
+        ref = self.reference
+        sc, rel, eco = score(cost, self.w.shed_mwh, ref["cost"], ref["shed_mwh"], ref["demand_mwh"])
+        return {"cost": cost, "score": sc, "R": rel, "E": eco, "reference_cost": ref["cost"],
+                "reference_shed_mwh": ref["shed_mwh"], "shed_mwh": self.w.shed_mwh, "starts": self.w.starts,
+                "parts": dict(self.w.cost)}

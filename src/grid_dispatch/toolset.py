@@ -37,7 +37,7 @@ class ShiftState(vf.State):
 
 
 def rebuild(world: dict, log: list[dict]) -> Shift:
-    shift = Shift(World(task_from_row({"id": "", "world": world})), reference=0.0, floor=0.0)
+    shift = Shift(World(task_from_row({"id": "", "world": world})))
     for entry in log:
         if "act" in entry:
             shift.act(entry["act"])

@@ -19,7 +19,6 @@ from pathlib import Path
 
 from aiohttp import web
 
-from grid_dispatch.build import grade
 from grid_dispatch.taskset import DEFAULT_TASKS
 from verifiers.v1.clients import EvalClientConfig, ModelContext
 from verifiers.v1.configs.cli.eval import EvalConfig
@@ -72,7 +71,7 @@ def scripted_reply(policy: str, body: dict) -> dict:
         system = next(m for m in msgs if m["role"] == "tool" and m.get("tool_call_id") == calls[0]["id"])
         row = match_row(system["content"] if isinstance(system["content"], str)
                         else "".join(p.get("text", "") for p in system["content"]))
-        step = row["reference"]["rolling_actions"][advances]
+        step = row["reference"]["actions"][advances]
         last = calls[-1]["function"]["name"]
         if last == "act":
             message["tool_calls"] = [_call(len(calls), "advance_clock", {})]
@@ -158,10 +157,10 @@ async def main():
         print(f"== {policy}: {len(results)} episodes")
         for tid, reward, metrics in sorted(results):
             ref = by_id[tid]["reference"]
-            want = grade(ref["baselines"]["rolling" if policy == "oracle" else "nothing"], ref["cost"], ref["floor"])
+            want = 1.0 if policy == "oracle" else ref["baselines"]["nothing"]["score"]
             good = reward is not None and abs(reward - want) < 1e-4   # costs are stored to the cent
             ok &= good
-            stats = metrics.get("shift_stats", metrics)
+            stats = {k: round(v, 3) for k, v in metrics.get("shift_stats", metrics).items() if k in ("reliability", "economy", "shed_mwh", "steps_played")}
             print(f"  {'ok ' if good else 'BAD'} {tid}: reward {reward} (expected {want:.4f}) {stats}")
         ok &= len(results) == len(ROWS)
     print("ALL GATES PASS" if ok else "SOME GATES FAILED")

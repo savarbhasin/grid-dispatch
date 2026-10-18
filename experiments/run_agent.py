@@ -122,7 +122,7 @@ def main():
     ap.add_argument("--out", type=Path)
     args = ap.parse_args()
     row = next(json.loads(l) for l in args.tasks.read_text().splitlines() if json.loads(l)["id"] == args.task_id)
-    shift = Shift(World(task_from_row(row)), row["reference"]["cost"], row["reference"]["floor"])
+    shift = Shift(World(task_from_row(row)), row["reference"])
     client = OpenAI(base_url=args.base_url, api_key=os.environ[args.api_key_var], timeout=1800)
     messages = [{"role": "user", "content": PROMPT.format(sim=SIMULATE_PER_STEP)}]
     usages, nudged, t0 = [], False, time.perf_counter()
@@ -154,7 +154,7 @@ def main():
     res = {**shift.result(), "auto_finished": auto, "model_calls": len(usages),
            "prompt_tokens": sum(u.get("prompt_tokens") or 0 for u in usages),
            "completion_tokens": sum(u.get("completion_tokens") or 0 for u in usages),
-           "baseline_scores": row["reference"]["scores"], "seconds": round(time.perf_counter() - t0)}
+           "baseline_scores": {p: b["score"] for p, b in row["reference"]["baselines"].items()}, "seconds": round(time.perf_counter() - t0)}
     print(json.dumps({k: v for k, v in res.items() if k != "parts"}, indent=1))
     out = args.out or Path("experiments/results") / f"{args.task_id}--{args.model.split('/')[-1]}.json"
     out.write_text(json.dumps({"result": res, "usage": usages, "messages": messages}, indent=1))
