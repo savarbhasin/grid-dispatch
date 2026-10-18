@@ -27,7 +27,7 @@ class PlanError(RuntimeError):
 
 
 def plan(world: World, demand: np.ndarray, renew: np.ndarray, end: int = H, trips: dict[str, int] | None = None,
-         ignore_lead: bool = False, time_limit: float = 30.0, reserve_n: int = 1) -> tuple[dict[str, np.ndarray], np.ndarray, dict]:
+         ignore_lead: bool = False, time_limit: float = 120.0, reserve_n: int = 1) -> tuple[dict[str, np.ndarray], np.ndarray, dict]:
     """Cheapest commitment for hours [now, end) given forecasts. Returns full-day schedules
     (hours before now copied, hours after `end` holding the last state), a battery plan and
     solver stats."""
@@ -37,7 +37,8 @@ def plan(world: World, demand: np.ndarray, renew: np.ndarray, end: int = H, trip
     hrs = list(range(now, end))
     s = pywraplp.Solver.CreateSolver("HIGHS")
     s.SetNumThreads(1)
-    s.SetSolverSpecificParametersAsString("output_flag=false")
+    # a 0.1% optimality gap: far below the differences between policies, and much faster under load
+    s.SetSolverSpecificParametersAsString("output_flag=false\nmip_rel_gap=0.001")
     s.SetTimeLimit(int(time_limit * 1000))
     inf = s.infinity()
     obj = s.Objective()
