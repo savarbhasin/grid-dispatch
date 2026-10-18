@@ -16,9 +16,10 @@ from grid_dispatch.world import DUMP, H, RESERVE, VOLL, World
 
 RESERVE_PENALTY = 500.0   # $/MW-h of reserve shortfall, in the solver's objective only
 # Spinning reserve the solver keeps each hour: RESERVE x forecast demand, and enough to cover the
-# output of the largest running unit (reserve_n=1, the "N-1" rule operators use) or twice it
-# (reserve_n=2, a cautious stand-in for "any two units": one constraint per unit instead of one per
-# pair, which the solver handles in seconds). reserve_n=0 keeps none (the hindsight plan needs none).
+# output of the largest running unit (reserve_n=1, the "N-1" rule operators use) or of any two of the
+# N2_UNITS largest units (reserve_n=2). Pairs over the whole fleet made the solve time out; only big
+# units are given trips, so the largest few are the pairs that matter. reserve_n=0 keeps none.
+N2_UNITS = 6
 
 
 class PlanError(RuntimeError):
@@ -107,8 +108,13 @@ def plan(world: World, demand: np.ndarray, renew: np.ndarray, end: int = H, trip
         s.Add(sum(total_p[h]) + ren + d - c + shed - dump == float(demand[h]))
         if reserve_n >= 1:
             s.Add(sum(spare[h]) + rshort >= RESERVE * float(demand[h]))
-            for u in t.units:   # the others can cover this unit's output (twice it, for N-2) if it trips
-                s.Add(sum(spare[h]) - R[u.id][h] + rshort >= reserve_n * P[u.id][h])
+            for u in t.units:   # N-1: the others can cover this unit's output if it trips
+                s.Add(sum(spare[h]) - R[u.id][h] + rshort >= P[u.id][h])
+        if reserve_n >= 2:
+            big = sorted(t.units, key=lambda u: -u.pmax)[:N2_UNITS]
+            for i, a in enumerate(big):   # N-2: ... and any two of the largest together
+                for c2 in big[i + 1:]:
+                    s.Add(sum(spare[h]) - R[a.id][h] - R[c2.id][h] + rshort >= P[a.id][h] + P[c2.id][h])
         bat[h] = (c, d)
     obj.SetMinimization()
     status = s.Solve()
