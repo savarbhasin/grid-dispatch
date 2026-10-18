@@ -27,7 +27,7 @@ class PlanError(RuntimeError):
 
 
 def plan(world: World, demand: np.ndarray, renew: np.ndarray, end: int = H, trips: dict[str, int] | None = None,
-         ignore_lead: bool = False, time_limit: float = 120.0, reserve_n: int = 1) -> tuple[dict[str, np.ndarray], np.ndarray, dict]:
+         ignore_lead: bool = False, time_limit: float = 240.0, reserve_n: int = 1) -> tuple[dict[str, np.ndarray], np.ndarray, dict]:
     """Cheapest commitment for hours [now, end) given forecasts. Returns full-day schedules
     (hours before now copied, hours after `end` holding the last state), a battery plan and
     solver stats."""
